@@ -42,7 +42,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.lang.reflect.Proxy;
 import java.math.BigInteger;
 import java.net.URI;
 import java.util.ArrayList;
@@ -170,22 +169,16 @@ public class Java9 extends Java8 {
         return of(declaringClass);
     }
 
-    private static Constructor<MethodHandles.Lookup> getLookupConstructor() {
+    protected static Constructor<MethodHandles.Lookup> getLookupConstructor() {
         return LookupHolder.LOOKUP_Constructor;
     }
 
-    private static Method getPrivateLookup() {
+    protected static Method getPrivateLookup() {
         return LookupHolder.PRIVATE_LOOKUP;
     }
 
     public static MethodHandles.Lookup of(final Class<?> declaringClass) {
         try {
-            // All proxy classes are not open for reflective access in Java SE 16
-            // See also https://www.oracle.com/java/technologies/javase/16-relnotes.html
-            if (Proxy.isProxyClass(declaringClass)) {
-                return MethodHandles.lookup().in(declaringClass);
-            }
-
             final Method privateLookup = getPrivateLookup();
             if (privateLookup != null) {
                 return (MethodHandles.Lookup) privateLookup.invoke(null, declaringClass, MethodHandles.lookup());
@@ -361,8 +354,8 @@ public class Java9 extends Java8 {
     private static List<CachedMethod> getMetaMethods(CachedMethod metaMethod, Class<?>[] params, Class<?> sc, boolean declared) {
         String metaMethodName = metaMethod.getName();
         List<Method> optionalMethodList = declared
-                                            ? ReflectionUtils.getDeclaredMethods(sc, metaMethodName, params)
-                                            : ReflectionUtils.getMethods(sc, metaMethodName, params);
+                ? ReflectionUtils.getDeclaredMethods(sc, metaMethodName, params)
+                : ReflectionUtils.getMethods(sc, metaMethodName, params);
         return optionalMethodList.stream().map(CachedMethod::new).collect(Collectors.toList());
     }
 
