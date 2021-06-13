@@ -42,6 +42,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.Proxy;
 import java.math.BigInteger;
 import java.net.URI;
 import java.util.ArrayList;
@@ -179,6 +180,12 @@ public class Java9 extends Java8 {
 
     public static MethodHandles.Lookup of(final Class<?> declaringClass) {
         try {
+            // All proxy classes are not open for reflective access in Java SE 16
+            // See also https://www.oracle.com/java/technologies/javase/16-relnotes.html
+            if (Proxy.isProxyClass(declaringClass)) {
+                return MethodHandles.lookup().in(declaringClass);
+            }
+
             final Method privateLookup = getPrivateLookup();
             if (privateLookup != null) {
                 return (MethodHandles.Lookup) privateLookup.invoke(null, declaringClass, MethodHandles.lookup());
