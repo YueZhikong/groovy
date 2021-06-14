@@ -81,7 +81,7 @@ public class Java16 extends Java10 {
         final Class<?> receiverType = receiver.getClass();
         try {
             if (method.isDefault() && Proxy.isProxyClass(receiverType)) {
-                return new ProxyMethodHandle((Proxy) receiver, method);
+                return new ProxyDefaultMethodHandle((Proxy) receiver, method);
             }
 
             MethodHandles.Lookup lookup = newLookup(receiverType);
@@ -96,8 +96,8 @@ public class Java16 extends Java10 {
 
     @Override
     public Object invokeHandle(Object handle, Object[] args) throws Throwable {
-        if (handle instanceof ProxyMethodHandle) {
-            return ((ProxyMethodHandle) handle).invokeWithArguments(args);
+        if (handle instanceof ProxyDefaultMethodHandle) {
+            return ((ProxyDefaultMethodHandle) handle).invokeWithArguments(args);
         }
         if (handle instanceof Throwable) throw (Throwable) handle;
         MethodHandle mh = (MethodHandle) handle;

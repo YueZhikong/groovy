@@ -9,7 +9,7 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 
-class ProxyMethodHandle {
+class ProxyDefaultMethodHandle {
     private static final MethodHandle INVOKE_DEFAULT_METHOD_HANDLE;
     static {
         try {
@@ -26,7 +26,7 @@ class ProxyMethodHandle {
     private final Proxy proxy;
     private final Method method;
 
-    ProxyMethodHandle(Proxy proxy, Method method) {
+    ProxyDefaultMethodHandle(Proxy proxy, Method method) {
         this.proxy = proxy;
         this.method = method;
     }
