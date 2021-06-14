@@ -21,6 +21,7 @@ package org.codehaus.groovy.vmplugin.v16;
 import groovy.lang.GroovyRuntimeException;
 import org.codehaus.groovy.vmplugin.v10.Java10;
 
+import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -50,12 +51,6 @@ public class Java16 extends Java10 {
 
     public static MethodHandles.Lookup of(final Class<?> declaringClass) {
         try {
-            // All proxy classes are not open for reflective access in Java SE 16
-            // See also https://www.oracle.com/java/technologies/javase/16-relnotes.html
-            if (Proxy.isProxyClass(declaringClass)) {
-                return MethodHandles.lookup().in(declaringClass);
-            }
-
             final Method privateLookup = getPrivateLookup();
             if (privateLookup != null) {
                 MethodHandles.Lookup caller = MethodHandles.lookup();
@@ -85,11 +80,28 @@ public class Java16 extends Java10 {
     public Object getInvokeSpecialHandle(Method method, Object receiver) {
         final Class<?> receiverType = receiver.getClass();
         try {
+            if (method.isDefault() && Proxy.isProxyClass(receiverType)) {
+                return new ProxyMethodHandle((Proxy) receiver, method);
+            }
+
             MethodHandles.Lookup lookup = newLookup(receiverType);
-            return lookup.unreflectSpecial(method, receiverType).bindTo(receiver);
+            if (MethodHandles.Lookup.PRIVATE == lookup.lookupModes()) {
+                return lookup.unreflectSpecial(method, receiverType).bindTo(receiver);
+            }
+            return lookup.unreflect(method).bindTo(receiver);
         } catch (ReflectiveOperationException e) {
             return new GroovyRuntimeException(e);
         }
+    }
+
+    @Override
+    public Object invokeHandle(Object handle, Object[] args) throws Throwable {
+        if (handle instanceof ProxyMethodHandle) {
+            return ((ProxyMethodHandle) handle).invokeWithArguments(args);
+        }
+        if (handle instanceof Throwable) throw (Throwable) handle;
+        MethodHandle mh = (MethodHandle) handle;
+        return mh.invokeWithArguments(args);
     }
 
     @Override

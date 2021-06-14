@@ -652,7 +652,6 @@ public class Java8 implements VMPlugin {
 
     @Override
     public Object invokeHandle(Object handle, Object[] args) throws Throwable {
-        if (handle instanceof Throwable) throw (Throwable) handle;
         MethodHandle mh = (MethodHandle) handle;
         return mh.invokeWithArguments(args);
     }
