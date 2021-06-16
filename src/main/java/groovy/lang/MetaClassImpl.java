@@ -39,6 +39,7 @@ import org.codehaus.groovy.reflection.ReflectionCache;
 import org.codehaus.groovy.reflection.ReflectionUtils;
 import org.codehaus.groovy.reflection.android.AndroidSupport;
 import org.codehaus.groovy.runtime.ArrayTypeUtils;
+import org.codehaus.groovy.runtime.ArrayUtil;
 import org.codehaus.groovy.runtime.ConvertedClosure;
 import org.codehaus.groovy.runtime.CurriedClosure;
 import org.codehaus.groovy.runtime.DefaultGroovyMethods;
@@ -1139,6 +1140,18 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
         }
     }
 
+    private static class MethodHolder {
+        private static final Method CLONE_ARRAY_METHOD;
+        static {
+            Optional<Method> methodOptional = Arrays.stream(ArrayUtil.class.getDeclaredMethods()).filter(m -> "cloneArray".equals(m.getName())).findFirst();
+            if (!methodOptional.isPresent()) {
+                throw new GroovyBugError("Failed to find `cloneArray` method in class `" + ArrayUtil.class.getName() + "`");
+            }
+            CLONE_ARRAY_METHOD = methodOptional.get();
+        }
+        private MethodHolder() {}
+    }
+
     private Object doInvokeMethodFallback(Class sender, Object object, String methodName, Object[] originalArguments, boolean isCallToSuper, MissingMethodException mme) {
         MethodHandles.Lookup lookup = null;
         if (object instanceof GroovyObject) {
@@ -1147,13 +1160,14 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
             lookup = lookupOptional.get();
         }
 
+        final Class<?> receiverClass = object.getClass();
         if (isCallToSuper) {
             if (null == lookup) throw mme;
             Method superMethod = findMethod(sender, methodName, originalArguments);
             if (null == superMethod) throw mme;
             MethodHandle superMethodHandle;
             try {
-                superMethodHandle = lookup.unreflectSpecial(superMethod, object.getClass());
+                superMethodHandle = lookup.unreflectSpecial(superMethod, receiverClass);
             } catch (IllegalAccessException e) {
                 throw mme;
             }
@@ -1163,8 +1177,32 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
                 throw new GroovyRuntimeException(t);
             }
         } else {
-            if (null == lookup) lookup = MethodHandles.lookup().in(object.getClass());
-            Method thisMethod = findMethod(object.getClass(), methodName, originalArguments);
+            if (receiverClass.isArray()) {
+                if ("clone".equals(methodName) && 0 == originalArguments.length) {
+                    MethodHandle cloneArrayMethodHandle;
+                    try {
+                        cloneArrayMethodHandle = MethodHandles.lookup().in(ArrayUtil.class).unreflect(MethodHolder.CLONE_ARRAY_METHOD);
+                    } catch (IllegalAccessException e) {
+                        throw mme;
+                    }
+                    try {
+                        Object[] array = (Object[]) object;
+                        Object[] result = (Object[]) cloneArrayMethodHandle.invokeExact(array);
+                        return result;
+                    } catch (Throwable t) {
+                        throw new GroovyRuntimeException(t);
+                    }
+                }
+            }
+
+            if (null == lookup) {
+                try {
+                    lookup = MethodHandles.lookup().in(receiverClass);
+                } catch (IllegalArgumentException e) {
+                    throw mme;
+                }
+            }
+            Method thisMethod = findMethod(receiverClass, methodName, originalArguments);
             if (null == thisMethod) throw mme;
             MethodHandle thisMethodHandle;
             try {
