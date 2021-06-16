@@ -1134,36 +1134,55 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
     public Object invokeMethod(Class sender, Object object, String methodName, Object[] originalArguments, boolean isCallToSuper, boolean fromInsideClass) {
         try {
             return doInvokeMethod(sender, object, methodName, originalArguments, isCallToSuper, fromInsideClass);
-        } catch (MissingMethodException ex) {
-            if (!isCallToSuper) {
-                throw ex;
-            }
+        } catch (MissingMethodException mme) {
+            return doInvokeMethodFallback(sender, object, methodName, originalArguments, isCallToSuper, mme);
+        }
+    }
 
-            if (!(object instanceof GroovyObject)) {
-                throw ex;
-            }
-
+    private Object doInvokeMethodFallback(Class sender, Object object, String methodName, Object[] originalArguments, boolean isCallToSuper, MissingMethodException mme) {
+        MethodHandles.Lookup lookup = null;
+        if (object instanceof GroovyObject) {
             Optional<MethodHandles.Lookup> lookupOptional = GroovyObjectHelper.lookup((GroovyObject) object);
-            if (!lookupOptional.isPresent()) {
-                throw ex;
-            }
-            MethodHandles.Lookup lookup = lookupOptional.get();
-            Method superMethod = findSuperMethod(sender, methodName, originalArguments);
-            if (null == superMethod) {
-                throw ex;
+            if (!lookupOptional.isPresent()) throw mme;
+            lookup = lookupOptional.get();
+        }
+
+        if (isCallToSuper) {
+            if (null == lookup) throw mme;
+            Method superMethod = findMethod(sender, methodName, originalArguments);
+            if (null == superMethod) throw mme;
+            MethodHandle superMethodHandle;
+            try {
+                superMethodHandle = lookup.unreflectSpecial(superMethod, object.getClass());
+            } catch (IllegalAccessException e) {
+                throw mme;
             }
             try {
-                MethodHandle superMethodHandle = lookup.unreflectSpecial(superMethod, object.getClass());
                 return superMethodHandle.bindTo(object).invokeWithArguments(originalArguments);
+            } catch (Throwable t) {
+                throw new GroovyRuntimeException(t);
+            }
+        } else {
+            if (null == lookup) lookup = MethodHandles.lookup().in(object.getClass());
+            Method thisMethod = findMethod(object.getClass(), methodName, originalArguments);
+            if (null == thisMethod) throw mme;
+            MethodHandle thisMethodHandle;
+            try {
+                thisMethodHandle = lookup.unreflect(thisMethod);
+            } catch (IllegalAccessException e) {
+                throw mme;
+            }
+            try {
+                return thisMethodHandle.bindTo(object).invokeWithArguments(originalArguments);
             } catch (Throwable t) {
                 throw new GroovyRuntimeException(t);
             }
         }
     }
 
-    private static Method findSuperMethod(Class senderClass, String messageName, Object[] messageArguments) {
+    private static Method findMethod(Class clazz, String messageName, Object[] messageArguments) {
         Class[] parameterTypes = MetaClassHelper.castArgumentsToClassArray(messageArguments);
-        for (Class<?> c = senderClass; null != c; c = c.getSuperclass()) {
+        for (Class<?> c = clazz; null != c; c = c.getSuperclass()) {
             List<Method> declaredMethodList = ReflectionUtils.getDeclaredMethods(c, messageName, parameterTypes);
             if (!declaredMethodList.isEmpty()) {
                 Method superMethod = declaredMethodList.get(0);
