@@ -46,12 +46,12 @@ public class GroovyObjectHelper {
             if (groovyObjectClass.isAnonymousClass() ||
                     (groovyObjectClass.isMemberClass() && !Modifier.isStatic(groovyObjectClass.getModifiers()))) {
                 lookup = (MethodHandles.Lookup) MethodHandles.lookup()
-                        .findVirtual(groovyObjectClass, "$getLookup", MethodType.methodType(MethodHandles.Lookup.class, new Class[0]))
+                        .findVirtual(groovyObjectClass, "$getLookup", MethodType.methodType(MethodHandles.Lookup.class, EMPTY_CLASS_ARRAY))
                         .bindTo(groovyObject)
                         .invokeExact();
             } else {
                 lookup = (MethodHandles.Lookup) MethodHandles.lookup()
-                        .findStatic(groovyObjectClass, "$getLookup", MethodType.methodType(MethodHandles.Lookup.class, new Class[0]))
+                        .findStatic(groovyObjectClass, "$getLookup", MethodType.methodType(MethodHandles.Lookup.class, EMPTY_CLASS_ARRAY))
                         .invokeExact();
             }
         } catch (Throwable e) {
@@ -62,4 +62,5 @@ public class GroovyObjectHelper {
     }
 
     private GroovyObjectHelper() {}
+    private static final Class[] EMPTY_CLASS_ARRAY = new Class[0];
 }

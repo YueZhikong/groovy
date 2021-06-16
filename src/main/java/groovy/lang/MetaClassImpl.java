@@ -1193,6 +1193,7 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
                         throw new GroovyRuntimeException(t);
                     }
                 }
+                throw mme;
             }
 
             if (null == lookup) {
