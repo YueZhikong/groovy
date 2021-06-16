@@ -19,6 +19,7 @@
 package groovy.lang;
 
 import org.apache.groovy.internal.util.UncheckedThrow;
+import org.apache.groovy.lang.GroovyObjectHelper;
 import org.apache.groovy.util.BeanUtils;
 import org.apache.groovy.util.SystemUtil;
 import org.codehaus.groovy.GroovyBugError;
@@ -35,6 +36,7 @@ import org.codehaus.groovy.reflection.ClassInfo;
 import org.codehaus.groovy.reflection.GeneratedMetaMethod;
 import org.codehaus.groovy.reflection.ParameterTypes;
 import org.codehaus.groovy.reflection.ReflectionCache;
+import org.codehaus.groovy.reflection.ReflectionUtils;
 import org.codehaus.groovy.reflection.android.AndroidSupport;
 import org.codehaus.groovy.runtime.ArrayTypeUtils;
 import org.codehaus.groovy.runtime.ConvertedClosure;
@@ -85,6 +87,8 @@ import java.beans.BeanInfo;
 import java.beans.EventSetDescriptor;
 import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -106,6 +110,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -1127,6 +1132,51 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
      */
     @Override
     public Object invokeMethod(Class sender, Object object, String methodName, Object[] originalArguments, boolean isCallToSuper, boolean fromInsideClass) {
+        try {
+            return doInvokeMethod(sender, object, methodName, originalArguments, isCallToSuper, fromInsideClass);
+        } catch (MissingMethodException ex) {
+            if (!isCallToSuper) {
+                throw ex;
+            }
+
+            if (!(object instanceof GroovyObject)) {
+                throw ex;
+            }
+
+            Optional<MethodHandles.Lookup> lookupOptional = GroovyObjectHelper.lookup((GroovyObject) object);
+            if (!lookupOptional.isPresent()) {
+                throw ex;
+            }
+            MethodHandles.Lookup lookup = lookupOptional.get();
+            Method superMethod = findSuperMethod(sender, methodName, originalArguments);
+            if (null == superMethod) {
+                throw ex;
+            }
+            try {
+                MethodHandle superMethodHandle = lookup.unreflectSpecial(superMethod, object.getClass());
+                return superMethodHandle.bindTo(object).invokeWithArguments(originalArguments);
+            } catch (Throwable t) {
+                throw new GroovyRuntimeException(t);
+            }
+        }
+    }
+
+    private static Method findSuperMethod(Class senderClass, String messageName, Object[] messageArguments) {
+        Class[] parameterTypes = MetaClassHelper.castArgumentsToClassArray(messageArguments);
+        for (Class<?> c = senderClass; null != c; c = c.getSuperclass()) {
+            List<Method> declaredMethodList = ReflectionUtils.getDeclaredMethods(c, messageName, parameterTypes);
+            if (!declaredMethodList.isEmpty()) {
+                Method superMethod = declaredMethodList.get(0);
+                if (Modifier.isAbstract(superMethod.getModifiers())) {
+                    continue;
+                }
+                return superMethod;
+            }
+        }
+        return null;
+    }
+
+    private Object doInvokeMethod(Class sender, Object object, String methodName, Object[] originalArguments, boolean isCallToSuper, boolean fromInsideClass) {
         checkInitalised();
         if (object == null) {
             throw new NullPointerException("Cannot invoke method: " + methodName + " on null object");

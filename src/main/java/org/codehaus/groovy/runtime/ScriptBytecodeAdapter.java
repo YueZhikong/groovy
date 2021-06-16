@@ -31,8 +31,6 @@ import groovy.lang.MissingPropertyException;
 import groovy.lang.NumberRange;
 import groovy.lang.ObjectRange;
 import groovy.lang.Tuple;
-import org.apache.groovy.lang.GroovyObjectHelper;
-import org.codehaus.groovy.reflection.ReflectionUtils;
 import org.codehaus.groovy.runtime.metaclass.MissingMethodExceptionNoStack;
 import org.codehaus.groovy.runtime.metaclass.MissingMethodExecutionFailed;
 import org.codehaus.groovy.runtime.metaclass.MissingPropertyExceptionNoStack;
@@ -41,16 +39,10 @@ import org.codehaus.groovy.runtime.wrappers.GroovyObjectWrapper;
 import org.codehaus.groovy.runtime.wrappers.PojoWrapper;
 import org.codehaus.groovy.runtime.wrappers.Wrapper;
 
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodHandles.Lookup;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -150,41 +142,10 @@ public class ScriptBytecodeAdapter {
         Object result = null;
         try {
             result = metaClass.invokeMethod(senderClass, receiver, messageName, messageArguments, true, true);
-        } catch (MissingMethodException ex) {
-            try {
-                Optional<MethodHandles.Lookup> lookupOptional = GroovyObjectHelper.lookup(receiver);
-                if (!lookupOptional.isPresent()) {
-                    throw unwrap(ex);
-                }
-                Lookup lookup = lookupOptional.get();
-                Method superMethod = findSuperMethod(senderClass, messageName, messageArguments);
-                if (null == superMethod) {
-                    throw unwrap(ex);
-                }
-                MethodHandle superMethodHandle = lookup.unreflectSpecial(superMethod, receiver.getClass());
-                return superMethodHandle.bindTo(receiver).invokeWithArguments(messageArguments);
-            } catch (NoSuchMethodException | IllegalAccessException e) {
-                throw e;
-            }
         } catch (GroovyRuntimeException gre) {
             throw unwrap(gre);
         }
         return result;
-    }
-
-    private static Method findSuperMethod(Class senderClass, String messageName, Object[] messageArguments) {
-        Class[] parameterTypes = MetaClassHelper.castArgumentsToClassArray(messageArguments);
-        for (Class<?> c = senderClass; null != c; c = c.getSuperclass()) {
-            List<Method> declaredMethodList = ReflectionUtils.getDeclaredMethods(c, messageName, parameterTypes);
-            if (!declaredMethodList.isEmpty()) {
-                Method superMethod = declaredMethodList.get(0);
-                if (Modifier.isAbstract(superMethod.getModifiers())) {
-                    continue;
-                }
-                return superMethod;
-            }
-        }
-        return null;
     }
 
     public static Object invokeMethodOnSuperNSafe(Class senderClass, GroovyObject receiver, String messageName, Object[] messageArguments) throws Throwable {
