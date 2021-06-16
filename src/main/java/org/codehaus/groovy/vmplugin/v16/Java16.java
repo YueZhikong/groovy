@@ -78,14 +78,14 @@ public class Java16 extends Java10 {
 
     @Override
     public Object getInvokeSpecialHandle(Method method, Object receiver) {
-        final Class<?> receiverType = receiver.getClass();
         try {
+            final Class<?> receiverType = receiver.getClass();
             if (method.isDefault() && Proxy.isProxyClass(receiverType)) {
                 return new ProxyDefaultMethodHandle((Proxy) receiver, method);
             }
 
-            MethodHandles.Lookup lookup = newLookup(receiverType);
-            if (MethodHandles.Lookup.PRIVATE == lookup.lookupModes()) {
+            MethodHandles.Lookup lookup = getLookup(receiver);
+            if (0 != (MethodHandles.Lookup.PRIVATE & lookup.lookupModes())) {
                 return lookup.unreflectSpecial(method, receiverType).bindTo(receiver);
             }
             return lookup.unreflect(method).bindTo(receiver);

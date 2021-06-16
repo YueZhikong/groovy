@@ -375,6 +375,7 @@ public class Verifier implements GroovyClassVisitor, Opcodes {
                 new BytecodeSequence(new BytecodeInstruction() {
                     @Override
                     public void visit(final MethodVisitor mv) {
+                        // TODO use privateLookup instead
                         mv.visitMethodInsn(INVOKESTATIC, "java/lang/invoke/MethodHandles", "lookup", "()Ljava/lang/invoke/MethodHandles$Lookup;", false);
                         mv.visitInsn(ARETURN);
                     }
