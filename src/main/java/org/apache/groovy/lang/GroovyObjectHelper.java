@@ -25,6 +25,7 @@ import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Modifier;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Helper for {@link groovy.lang.GroovyObject}
@@ -40,6 +41,17 @@ public class GroovyObjectHelper {
      * @since 4.0.0
      */
     public static Optional<Lookup> lookup(GroovyObject groovyObject) {
+        AtomicReference<Lookup> lookupAtomicRef = LOOKUP_MAP.get(groovyObject.getClass());
+        Lookup lookup = lookupAtomicRef.get();
+        if (null != lookup) return Optional.of(lookup);
+
+        lookup = doLookup(groovyObject);
+        if (null != lookup) lookupAtomicRef.set(lookup);
+
+        return Optional.ofNullable(lookup);
+    }
+
+    private static Lookup doLookup(GroovyObject groovyObject) {
         MethodHandles.Lookup lookup;
         try {
             final Class<? extends GroovyObject> groovyObjectClass = groovyObject.getClass();
@@ -58,9 +70,15 @@ public class GroovyObjectHelper {
             lookup = null;
         }
 
-        return Optional.ofNullable(lookup);
+        return lookup;
     }
 
     private GroovyObjectHelper() {}
+    private static final ClassValue<AtomicReference<Lookup>> LOOKUP_MAP = new ClassValue<AtomicReference<Lookup>>() {
+        @Override
+        protected AtomicReference<Lookup> computeValue(Class<?> type) {
+            return new AtomicReference<>();
+        }
+    };
     private static final Class[] EMPTY_CLASS_ARRAY = new Class[0];
 }
