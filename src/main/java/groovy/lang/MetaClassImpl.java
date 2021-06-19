@@ -104,6 +104,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -121,6 +122,7 @@ import static java.lang.Character.isUpperCase;
 import static org.apache.groovy.util.Arrays.concat;
 import static org.codehaus.groovy.ast.tools.GeneralUtils.inSamePackage;
 import static org.codehaus.groovy.reflection.ReflectionCache.isAssignableFrom;
+import static org.codehaus.groovy.reflection.ReflectionUtils.parameterTypeMatches;
 
 /**
  * Allows methods to be dynamically added to existing classes at runtime
@@ -1152,6 +1154,13 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
         private MethodHolder() {}
     }
 
+    private static final ClassValue<Map<String, Set<Method>>> SPECIAL_METHODS_MAP = new ClassValue<Map<String, Set<Method>>>() {
+        @Override
+        protected Map<String, Set<Method>> computeValue(Class<?> type) {
+            return new ConcurrentHashMap<>(4);
+        }
+    };
+
     private Object doInvokeMethodFallback(Class sender, Object object, String methodName, Object[] originalArguments, boolean isCallToSuper, MissingMethodException mme) {
         MethodHandles.Lookup lookup = null;
         if (object instanceof GroovyObject) {
@@ -1163,7 +1172,8 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
         final Class<?> receiverClass = object.getClass();
         if (isCallToSuper) {
             if (null == lookup) throw mme;
-            Method superMethod = findMethod(sender, methodName, originalArguments);
+            Class[] argTypes = MetaClassHelper.castArgumentsToClassArray(originalArguments);
+            Method superMethod = findMethod(sender, methodName, argTypes);
             if (null == superMethod) throw mme;
             MethodHandle superMethodHandle;
             try {
@@ -1171,6 +1181,7 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
             } catch (IllegalAccessException e) {
                 throw mme;
             }
+            cacheMethod(sender, superMethod);
             try {
                 return superMethodHandle.bindTo(object).invokeWithArguments(originalArguments);
             } catch (Throwable t) {
@@ -1203,7 +1214,8 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
                     throw mme;
                 }
             }
-            Method thisMethod = findMethod(receiverClass, methodName, originalArguments);
+            Class[] argTypes = MetaClassHelper.castArgumentsToClassArray(originalArguments);
+            Method thisMethod = findMethod(receiverClass, methodName, argTypes);
             if (null == thisMethod) throw mme;
             MethodHandle thisMethodHandle;
             try {
@@ -1211,6 +1223,7 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
             } catch (IllegalAccessException e) {
                 throw mme;
             }
+            cacheMethod(receiverClass, thisMethod);
             try {
                 return thisMethodHandle.bindTo(object).invokeWithArguments(originalArguments);
             } catch (Throwable t) {
@@ -1219,10 +1232,33 @@ public class MetaClassImpl implements MetaClass, MutableMetaClass {
         }
     }
 
-    private static Method findMethod(Class clazz, String messageName, Object[] messageArguments) {
-        Class[] parameterTypes = MetaClassHelper.castArgumentsToClassArray(messageArguments);
+    private static void cacheMethod(Class clazz, Method method) {
+        SPECIAL_METHODS_MAP.get(clazz).compute(method.getName(), (k, v) -> {
+            if (null == v) {
+                v = new HashSet<>();
+            }
+            v.add(method);
+            return v;
+        });
+    }
+
+    private static Method findMethod(Class clazz, String messageName, Class[] argTypes) {
+        Set<Method> methods = SPECIAL_METHODS_MAP.get(clazz).get(messageName);
+
+        if (null != methods) {
+            for (Method method : methods) {
+                if (method.getName().equals(messageName) && parameterTypeMatches(method.getParameterTypes(), argTypes)) {
+                    return method;
+                }
+            }
+        }
+
+        return doFindMethod(clazz, messageName, argTypes);
+    }
+
+    private static Method doFindMethod(Class clazz, String messageName, Class[] argTypes) {
         for (Class<?> c = clazz; null != c; c = c.getSuperclass()) {
-            List<Method> declaredMethodList = ReflectionUtils.getDeclaredMethods(c, messageName, parameterTypes);
+            List<Method> declaredMethodList = ReflectionUtils.getDeclaredMethods(c, messageName, argTypes);
             if (!declaredMethodList.isEmpty()) {
                 Method superMethod = declaredMethodList.get(0);
                 if (Modifier.isAbstract(superMethod.getModifiers())) {
